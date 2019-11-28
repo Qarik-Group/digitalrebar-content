@@ -1,0 +1,10 @@
+BootEnv: sledgehammer
+Description: Prepare MoltenCore Cluster
+Documentation: ""
+Meta:
+  color: purple
+  icon: spinner
+  title: Stark & Wayne
+Name: molten-core-cluster-prepare
+Tasks:
+- molten-core-cluster-prepare

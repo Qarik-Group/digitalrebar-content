@@ -1,0 +1,48 @@
+Description: Prepare MoltenCore Cluster
+Documentation: |
+  Populates all dynamic fields into cluster profile and machines
+Meta:
+  color: black
+  feature-flags: sane-exit-codes
+  icon: unlinkify
+  title: Stark & Wayne Content
+Name: molten-core-cluster-prepare
+OptionalParams: []
+Prerequisites: []
+RequiredParams:
+- molten-core/cluster-profile
+Templates:
+- Contents: |-
+    #!/bin/bash
+    set -e
+
+    {{ template "setup.tmpl" .}}
+
+    {{ if .ParamExists "molten-core/cluster-profile" -}}
+    CLUSTER_PROFILE={{ .Param "molten-core/cluster-profile" }}
+    PROFILE_TOKEN={{ .GenerateProfileToken (.Param "molten-core/cluster-profile") 7200 }}
+    {{ else -}}
+    xiterr 1 "Missing mc/cluster-profile on the machine!"
+    {{ end -}}
+
+
+    {{template "molten-core-lib.sh.tmpl" .}}
+
+    # Need a subset of the ETCD members - let them through one at a time
+    INDEX=$(find_me "cluster/machines" $RS_UUID)
+    if [[ $INDEX == 0 ]] ; then
+      echo "I'm the master machine"
+
+      ETCD_DISCOVERY=$(curl 'https://discovery.etcd.io/new?size={{.Param "molten-core/etcd-cluster-size"}}')
+      drpcli -T $PROFILE_TOKEN profiles update $CLUSTER_PROFILE "{\"Params\":{\"molten-core/etcd-discovery-url\":\"$ETCD_DISCOVERY\"} }" | jq .Params
+    fi
+
+    drpcli machines update $RS_UUID "{\"Params\":{\"molten-core/zone\":\"$INDEX\"} }" | jq .Params
+
+    echo "Finished successfully"
+    exit 0
+  ID: ""
+  Meta: {}
+  Name: molten-core-cluster-prepare
+  Path: ""
+Validated: true

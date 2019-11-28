@@ -1,0 +1,306 @@
+meta:
+  Author: ""
+  CodeSource: ""
+  Color: ""
+  Copyright: ""
+  Description: ""
+  DisplayName: ""
+  DocUrl: ""
+  Documentation: ""
+  Icon: ""
+  License: ""
+  Name: molten-core
+  Order: ""
+  Prerequisites: ""
+  RequiredFeatures: ""
+  Source: ""
+  Tags: ""
+  Type: dynamic
+  Version: v0.0.0
+sections:
+  params:
+    molten-core/cluster-profile:
+      Available: false
+      Bundle: ""
+      Description: Name of the profile for this MoltenCore cluster
+      Documentation: |
+        Part of the Digital Rebar Cluster pattern, this parameter is used
+        to identify the machines used in the consul cluster
+        This parameter is REQUIRED for MoltenCore cluster contruction
+      Endpoint: ""
+      Errors: []
+      Meta:
+        color: blue
+        icon: book
+        render: profile
+        title: Community Content
+      Name: molten-core/cluster-profile
+      ReadOnly: false
+      Schema:
+        type: string
+      Secure: false
+      Validated: false
+    molten-core/etcd-cluster-size:
+      Available: false
+      Bundle: ""
+      Description: Name of the profile for this MoltenCore cluster
+      Documentation: |
+        The initial MoltenCore Etcd cluster size, additional nodes will use etcd proxy mode.
+      Endpoint: ""
+      Errors: []
+      Meta:
+        color: blue
+        icon: sitemap
+        title: Community Content
+      Name: molten-core/etcd-cluster-size
+      ReadOnly: false
+      Schema:
+        default: 1
+        type: integer
+      Secure: false
+      Validated: false
+  stages:
+    molten-core-cluster-prepare:
+      Available: false
+      BootEnv: sledgehammer
+      Bundle: ""
+      Description: Prepare MoltenCore Cluster
+      Documentation: ""
+      Endpoint: ""
+      Errors: []
+      Meta:
+        color: purple
+        icon: spinner
+        title: Stark & Wayne
+      Name: molten-core-cluster-prepare
+      OptionalParams: []
+      Params: {}
+      Partial: false
+      Profiles: []
+      ReadOnly: false
+      Reboot: false
+      RequiredParams: []
+      RunnerWait: false
+      Tasks:
+      - molten-core-cluster-prepare
+      Templates: []
+      Validated: false
+  tasks:
+    molten-core-cluster-prepare:
+      Available: false
+      Bundle: ""
+      Description: Prepare MoltenCore Cluster
+      Documentation: |
+        Populates all dynamic fields into cluster profile and machines
+      Endpoint: ""
+      Errors: []
+      Meta:
+        color: black
+        feature-flags: sane-exit-codes
+        icon: unlinkify
+        title: Stark & Wayne Content
+      Name: molten-core-cluster-prepare
+      OptionalParams: []
+      Prerequisites: []
+      ReadOnly: false
+      RequiredParams:
+      - molten-core/cluster-profile
+      Templates:
+      - Contents: |-
+          #!/bin/bash
+          set -e
+
+          {{ template "setup.tmpl" .}}
+
+          {{ if .ParamExists "molten-core/cluster-profile" -}}
+          CLUSTER_PROFILE={{ .Param "molten-core/cluster-profile" }}
+          PROFILE_TOKEN={{ .GenerateProfileToken (.Param "molten-core/cluster-profile") 7200 }}
+          {{ else -}}
+          xiterr 1 "Missing mc/cluster-profile on the machine!"
+          {{ end -}}
+
+
+          {{template "molten-core-lib.sh.tmpl" .}}
+
+          # Need a subset of the ETCD members - let them through one at a time
+          INDEX=$(find_me "cluster/machines" $RS_UUID)
+          if [[ $INDEX == 0 ]] ; then
+            echo "I'm the master machine"
+
+            ETCD_DISCOVERY=$(curl 'https://discovery.etcd.io/new?size={{.Param "molten-core/etcd-cluster-size"}}')
+            drpcli -T $PROFILE_TOKEN profiles update $CLUSTER_PROFILE "{\"Params\":{\"molten-core/etcd-discovery-url\":\"$ETCD_DISCOVERY\"} }" | jq .Params
+          fi
+
+          drpcli machines update $RS_UUID "{\"Params\":{\"molten-core/zone\":\"$INDEX\"} }" | jq .Params
+
+          echo "Finished successfully"
+          exit 0
+        ID: ""
+        Meta: {}
+        Name: molten-core-cluster-prepare
+        Path: ""
+      Validated: true
+  templates:
+    molten-core-ign.tmpl:
+      Available: false
+      Bundle: ""
+      Contents: |
+        {
+          "ignition": {
+            "config": {},
+            "security": {
+              "tls": {}
+            },
+            "timeouts": {},
+            "version": "2.2.0"
+          },
+          "networkd": {},
+        {{if .ParamExists "access-keys"}}
+        {{$list := values (.Param "access-keys")}}
+        {{if $list }}
+          "passwd": {
+            "users": [
+              {
+                "name": "core",
+                "sshAuthorizedKeys": [
+        {{range $i, $key := $list }}
+                {{if $i}},{{end}}
+                "{{$key}}"
+        {{end}}
+                ]
+              }
+            ]
+          },
+        {{end}}
+        {{end}}
+          "storage": {
+            "files": [
+              {
+                "filesystem": "root",
+                "path": "/etc/hostname",
+                "mode": 420,
+                "contents": { "source": "data:,{{.Machine.Name}}" }
+              },
+              {
+                "filesystem": "root",
+                "path": "/opt/bin/drpcli",
+                "contents": {
+                  "source": "{{.ProvisionerURL}}/files/drpcli.amd64.linux",
+                  "verification": {}
+                },
+                "mode": 493
+              },
+              {
+                "filesystem": "root",
+                "path": "/etc/drpcli",
+                "contents": {
+                  "source": "data:,RS_ENDPOINT%3D{{.ApiURL}}%0ARS_TOKEN%3D{{.GenerateInfiniteToken}}%0ARS_UUID%3D{{.Machine.UUID}}%0A",
+                  "verification": {}
+                },
+                "mode": 384
+              }
+            ]
+          },
+          "systemd": {
+            "units": [
+              {
+                "contents": "[Unit]\nDescription=DigitalRebar Provision Client Runner\nDocumentation=http://provision.readthedocs.io/en/latest/\nWants=network-online.target network.target\nAfter=drpcli-init.service network-online.target network.target\n\n[Service]\nEnvironmentFile=/etc/drpcli\nExecStart=/opt/bin/drpcli machines processjobs \"$RS_UUID\"\nRestart=always\nRestartSec=3\n\n[Install]\nWantedBy=multi-user.target\n",
+                "enabled": true,
+                "name": "drpcli.service"
+              },
+              {
+                "contents": "[Unit]\nDescription=DigitalRebar Provision Client Runner Initial Runnable\nDocumentation=http://provision.readthedocs.io/en/latest/\nWants=network-online.target network.target\nAfter=network-online.target network.target\n\n[Service]\nType=simple\nEnvironmentFile=/etc/drpcli\nExecStartPre=-/bin/curl -g -o /opt/bin/drpcli \"{{.ProvisionerURL}}/files/drpcli.amd64.linux\"\nExecStartPre=-/bin/chmod +x /opt/bin/drpcli\nExecStart=/opt/bin/drpcli machines update \"$RS_UUID\" '{ \"Runnable\": true }'\nRemainAfterExit=true\nRestart=on-failure\nRestartSec=5s\nStandardOutput=journal\n\n[Install]\nWantedBy=multi-user.target\n",
+                "enabled": true,
+                "name": "drpcli-init.service"
+              }
+            ]
+          }
+        }
+      Description: Ignition config for installing MoltenCore
+      Endpoint: ""
+      Errors: []
+      ID: molten-core-ign.tmpl
+      Meta: {}
+      ReadOnly: false
+      Validated: false
+    molten-core-lib.sh.tmpl:
+      Available: false
+      Bundle: ""
+      Contents: |
+        #
+        # Library of common sync/control functions
+        #
+        # Assumes PROFILE_TOKEN and CLUSTER_PROFILE are set
+        #
+        # Also assumes that setup.tmpl has been include to get the task functions
+        #   - get_param
+        # which assumes that RS_UUID and RS_KEY or RS_TOKEN are set.
+        #
+        [[ -z "$PROFILE_TOKEN" ]] && xiterr 1 "required PROFILE_TOKEN not set"
+        [[ -z "$CLUSTER_PROFILE" ]] && xiterr 1 "required CLUSTER_PROFILE not set"
+
+        wait_for_variable() {
+          local varname=$1
+          local var=$(get_param "$varname" | jq -r .)
+          local sleep_time=1
+          local timer_count=0
+          local timer_expire=600
+
+          while [[ $var == null ]] ; do
+            sleep $sleep_time
+            var=$(get_param "$varname" | jq -r .)
+            (( timer_count = timer_count + sleep_time ))
+            [[ $timer_count -ge $timer_expire ]] && xiterr 1 "timer expired ($timer_expire seconds) in loop ('${FUNCNAME[0]}')"
+          done
+          echo $var
+        }
+
+        wait_for_count() {
+          local varname=$1
+          local count=$2
+          local sleep_time=1
+          local timer_count=0
+          local timer_expire=600
+
+          local cl=$(get_param "$varname")
+          while [[ $(jq length <<< "$cl") -lt $count ]]; do
+            # we're good!
+            sleep $sleep_time
+            cl=$(get_param "$varname")
+            (( timer_count = timer_count + sleep_time ))
+            [[ $timer_count -ge $timer_expire ]] && xiterr 1 "timer expired ($timer_expire seconds) in loop ('${FUNCNAME[0]}')"
+          done
+          echo "Done"
+        }
+
+        #
+        # find_me looks for me specified by a field and value on varname.
+        #
+        # This assumes that the varname is of type array of objects (with Name, Uuid, and Address fields)
+        #
+        # Args:
+        #  - varname
+        #  - field
+        #  - value of field
+        #
+        # Returns "notme" if not added or the index in the list
+        #
+        find_me() {
+          local varname=$1
+          local me=$2
+
+          local index="notme"
+
+          val=$(get_param "$varname" | jq "index(\"${me}\")")
+          if [[ $val != null ]] ; then
+            index=$val
+          fi
+          echo $index
+        }
+      Description: ""
+      Endpoint: ""
+      Errors: []
+      ID: molten-core-lib.sh.tmpl
+      Meta: {}
+      ReadOnly: false
+      Validated: false

@@ -1,0 +1,70 @@
+#
+# Library of common sync/control functions
+#
+# Assumes PROFILE_TOKEN and CLUSTER_PROFILE are set
+#
+# Also assumes that setup.tmpl has been include to get the task functions
+#   - get_param
+# which assumes that RS_UUID and RS_KEY or RS_TOKEN are set.
+#
+[[ -z "$PROFILE_TOKEN" ]] && xiterr 1 "required PROFILE_TOKEN not set"
+[[ -z "$CLUSTER_PROFILE" ]] && xiterr 1 "required CLUSTER_PROFILE not set"
+
+wait_for_variable() {
+  local varname=$1
+  local var=$(get_param "$varname" | jq -r .)
+  local sleep_time=1
+  local timer_count=0
+  local timer_expire=600
+
+  while [[ $var == null ]] ; do
+    sleep $sleep_time
+    var=$(get_param "$varname" | jq -r .)
+    (( timer_count = timer_count + sleep_time ))
+    [[ $timer_count -ge $timer_expire ]] && xiterr 1 "timer expired ($timer_expire seconds) in loop ('${FUNCNAME[0]}')"
+  done
+  echo $var
+}
+
+wait_for_count() {
+  local varname=$1
+  local count=$2
+  local sleep_time=1
+  local timer_count=0
+  local timer_expire=600
+
+  local cl=$(get_param "$varname")
+  while [[ $(jq length <<< "$cl") -lt $count ]]; do
+    # we're good!
+    sleep $sleep_time
+    cl=$(get_param "$varname")
+    (( timer_count = timer_count + sleep_time ))
+    [[ $timer_count -ge $timer_expire ]] && xiterr 1 "timer expired ($timer_expire seconds) in loop ('${FUNCNAME[0]}')"
+  done
+  echo "Done"
+}
+
+#
+# find_me looks for me specified by a field and value on varname.
+#
+# This assumes that the varname is of type array of objects (with Name, Uuid, and Address fields)
+#
+# Args:
+#  - varname
+#  - field
+#  - value of field
+#
+# Returns "notme" if not added or the index in the list
+#
+find_me() {
+  local varname=$1
+  local me=$2
+
+  local index="notme"
+
+  val=$(get_param "$varname" | jq "index(\"${me}\")")
+  if [[ $val != null ]] ; then
+    index=$val
+  fi
+  echo $index
+}

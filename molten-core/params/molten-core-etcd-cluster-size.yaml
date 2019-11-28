@@ -1,0 +1,12 @@
+---
+Name: "molten-core/etcd-cluster-size"
+Description: "Name of the profile for this MoltenCore cluster"
+Documentation: |
+  The initial MoltenCore Etcd cluster size, additional nodes will use etcd proxy mode.
+Schema:
+  type: "integer"
+  default: 1
+Meta:
+  color: "blue"
+  icon: "sitemap"
+  title: "Community Content"

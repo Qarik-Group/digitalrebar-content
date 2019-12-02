@@ -37,7 +37,7 @@ Templates:
       drpcli -T $PROFILE_TOKEN profiles update $CLUSTER_PROFILE "{\"Params\":{\"molten-core/etcd-discovery-url\":\"$ETCD_DISCOVERY\"} }" | jq .Params
     fi
 
-    drpcli machines update $RS_UUID "{\"Params\":{\"molten-core/zone\":\"$INDEX\"} }" | jq .Params
+    drpcli machines update $RS_UUID "{\"Params\":{\"molten-core/zone\":\"$INDEX\",\"coreos/ignition-template\":\"molten-core-ign.json.tmpl\"} }" | jq .Params
 
     echo "Finished successfully"
     exit 0

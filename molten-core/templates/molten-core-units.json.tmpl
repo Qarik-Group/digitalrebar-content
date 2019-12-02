@@ -1,0 +1,23 @@
+  {
+    "dropins": [
+      {
+        "contents": "[Unit]\nRequires=coreos-metadata.service\nAfter=coreos-metadata.service\n\n[Service]\nEnvironmentFile=/run/metadata/coreos\nEnvironment=\"ETCD_IMAGE_TAG=v3.2.27\"\nExecStart=\nExecStart=/usr/lib/coreos/etcd-wrapper $ETCD_OPTS \\\n  --listen-peer-urls=\"http://${COREOS_CUSTOM_PRIVATE_IPV4}:2380\" \\\n  --listen-client-urls=\"http://0.0.0.0:2379\" \\\n  --initial-advertise-peer-urls=\"http://${COREOS_CUSTOM_PRIVATE_IPV4}:2380\" \\\n  --advertise-client-urls=\"http://${COREOS_CUSTOM_PRIVATE_IPV4}:2379\" \\\n  --discovery=\"{{.Param "molten-core/etcd-discovery-url"}}\"",
+        "name": "20-clct-etcd-member.conf"
+      }
+    ],
+    "enable": true,
+    "name": "etcd-member.service"
+  },
+  {
+    "contents": "[Unit]\nDescription=MoltenCore\nRequires=etcd-member.service coreos-metadata.service\nAfter=etcd-member.service coreos-metadata.service\n\n[Service]\nType=oneshot\nExecStart=/opt/bin/mc init --zone={{.Param "molten-core/zone"}}\nRemainAfterExit=true\nStandardOutput=journal\nUser=root\n\n[Install]\nWantedBy=multi-user.target docker.service flanneld.service\n",
+    "enable": true,
+    "name": "mc.service"
+  },
+  {
+    "mask": true,
+    "name": "update-engine.service"
+  },
+  {
+    "mask": true,
+    "name": "locksmithd.service"
+  }

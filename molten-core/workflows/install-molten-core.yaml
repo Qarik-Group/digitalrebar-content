@@ -1,0 +1,11 @@
+Name: install-molten-core
+Description: Install MoltenCore on CoreOS
+Meta:
+  color: black
+  icon: cloud
+  title: User added
+Stages:
+- cluster-add
+- molten-core-cluster-prepare
+- coreos-install
+- complete

@@ -131,7 +131,7 @@ sections:
             drpcli -T $PROFILE_TOKEN profiles update $CLUSTER_PROFILE "{\"Params\":{\"molten-core/etcd-discovery-url\":\"$ETCD_DISCOVERY\"} }" | jq .Params
           fi
 
-          drpcli machines update $RS_UUID "{\"Params\":{\"molten-core/zone\":\"$INDEX\"} }" | jq .Params
+          drpcli machines update $RS_UUID "{\"Params\":{\"molten-core/zone\":\"$INDEX\",\"coreos/ignition-template\":\"molten-core-ign.json.tmpl\"} }" | jq .Params
 
           echo "Finished successfully"
           exit 0
@@ -141,7 +141,29 @@ sections:
         Path: ""
       Validated: true
   templates:
-    molten-core-ign.tmpl:
+    molten-core-files.json.tmpl:
+      Available: false
+      Bundle: ""
+      Contents: |2
+          {
+            "filesystem": "root",
+            "path": "/opt/bin/mc",
+            "contents": {
+              "source": "https://github.com/starkandwayne/molten-core/releases/download/v0.6.0/mc",
+              "verification": {
+                "hash": "sha512-16e160d9a4ae43076fdc44116e09a0b4e169fa10bb41de825022f5444b65b3150582f4e0200931ccd07c3a42f78d527b26b768c394a6d63cdc06c59de70882dc"
+              }
+            },
+            "mode": 755
+          }
+      Description: ""
+      Endpoint: ""
+      Errors: []
+      ID: molten-core-files.json.tmpl
+      Meta: {}
+      ReadOnly: false
+      Validated: false
+    molten-core-ign.json.tmpl:
       Available: false
       Bundle: ""
       Contents: |
@@ -198,7 +220,17 @@ sections:
                   "verification": {}
                 },
                 "mode": 384
-              }
+              },
+              {
+                "filesystem": "root",
+                "path": "/opt/get-metadata.sh",
+                "contents": {
+                  "source": "data:,%23!%2Fbin%2Fbash%0AIFACE%3D%24(route%20-n%20%7C%20grep%20-e%20'%5E0.0.0.0'%20%7C%20awk%20'%7Bprint%20%248%7D')%0AIP%3D%24(ip%20addr%20show%20%24%7BIFACE%7D%20%7C%20grep%20-Po%20'inet%20%5CK%5B%5Cd.%5D%2B')%0Aecho%20%22COREOS_CUSTOM_HOSTNAME%3D%24(hostname)%22%20%3E%20%2Frun%2Fmetadata%2Fcoreos%0Aecho%20%22COREOS_CUSTOM_PRIVATE_IPV4%3D%24%7BIP%7D%22%20%20%3E%3E%20%2Frun%2Fmetadata%2Fcoreos%0Aecho%20%22COREOS_CUSTOM_PUBLIC_IPV4%3D%24%7BIP%7D%22%20%20%20%3E%3E%20%2Frun%2Fmetadata%2Fcoreos%0A",
+                  "verification": {}
+                },
+                "mode": 493
+              },
+              {{template "molten-core-files.json.tmpl" .}}
             ]
           },
           "systemd": {
@@ -212,14 +244,24 @@ sections:
                 "contents": "[Unit]\nDescription=DigitalRebar Provision Client Runner Initial Runnable\nDocumentation=http://provision.readthedocs.io/en/latest/\nWants=network-online.target network.target\nAfter=network-online.target network.target\n\n[Service]\nType=simple\nEnvironmentFile=/etc/drpcli\nExecStartPre=-/bin/curl -g -o /opt/bin/drpcli \"{{.ProvisionerURL}}/files/drpcli.amd64.linux\"\nExecStartPre=-/bin/chmod +x /opt/bin/drpcli\nExecStart=/opt/bin/drpcli machines update \"$RS_UUID\" '{ \"Runnable\": true }'\nRemainAfterExit=true\nRestart=on-failure\nRestartSec=5s\nStandardOutput=journal\n\n[Install]\nWantedBy=multi-user.target\n",
                 "enabled": true,
                 "name": "drpcli-init.service"
-              }
+              },
+              {
+                "dropins": [
+                  {
+                    "contents": "[Unit]\nWants=network-online.target network.target\nAfter=network-online.target network.target\n\n[Service]\n# Empty ExecStart= prevents the previously defined ExecStart from running\nExecStart=\nExecStart=/opt/get-metadata.sh\n",
+                    "name": "use-script.conf"
+                  }
+                ],
+                "name": "coreos-metadata.service"
+              },
+              {{template "molten-core-units.json.tmpl" .}}
             ]
           }
         }
-      Description: Ignition config for installing MoltenCore
+      Description: ""
       Endpoint: ""
       Errors: []
-      ID: molten-core-ign.tmpl
+      ID: molten-core-ign.json.tmpl
       Meta: {}
       ReadOnly: false
       Validated: false
@@ -303,4 +345,58 @@ sections:
       ID: molten-core-lib.sh.tmpl
       Meta: {}
       ReadOnly: false
+      Validated: false
+    molten-core-units.json.tmpl:
+      Available: false
+      Bundle: ""
+      Contents: |2
+          {
+            "dropins": [
+              {
+                "contents": "[Unit]\nRequires=coreos-metadata.service\nAfter=coreos-metadata.service\n\n[Service]\nEnvironmentFile=/run/metadata/coreos\nEnvironment=\"ETCD_IMAGE_TAG=v3.2.27\"\nExecStart=\nExecStart=/usr/lib/coreos/etcd-wrapper $ETCD_OPTS \\\n  --listen-peer-urls=\"http://${COREOS_CUSTOM_PRIVATE_IPV4}:2380\" \\\n  --listen-client-urls=\"http://0.0.0.0:2379\" \\\n  --initial-advertise-peer-urls=\"http://${COREOS_CUSTOM_PRIVATE_IPV4}:2380\" \\\n  --advertise-client-urls=\"http://${COREOS_CUSTOM_PRIVATE_IPV4}:2379\" \\\n  --discovery=\"{{.Param "molten-core/etcd-discovery-url"}}\"",
+                "name": "20-clct-etcd-member.conf"
+              }
+            ],
+            "enable": true,
+            "name": "etcd-member.service"
+          },
+          {
+            "contents": "[Unit]\nDescription=MoltenCore\nRequires=etcd-member.service coreos-metadata.service\nAfter=etcd-member.service coreos-metadata.service\n\n[Service]\nType=oneshot\nExecStart=/opt/bin/mc init --zone={{.Param "molten-core/zone"}}\nRemainAfterExit=true\nStandardOutput=journal\nUser=root\n\n[Install]\nWantedBy=multi-user.target docker.service flanneld.service\n",
+            "enable": true,
+            "name": "mc.service"
+          },
+          {
+            "mask": true,
+            "name": "update-engine.service"
+          },
+          {
+            "mask": true,
+            "name": "locksmithd.service"
+          }
+      Description: ""
+      Endpoint: ""
+      Errors: []
+      ID: molten-core-units.json.tmpl
+      Meta: {}
+      ReadOnly: false
+      Validated: false
+  workflows:
+    install-molten-core:
+      Available: false
+      Bundle: ""
+      Description: Install MoltenCore on CoreOS
+      Documentation: ""
+      Endpoint: ""
+      Errors: null
+      Meta:
+        color: black
+        icon: cloud
+        title: User added
+      Name: install-molten-core
+      ReadOnly: false
+      Stages:
+      - cluster-add
+      - molten-core-cluster-prepare
+      - coreos-install
+      - complete
       Validated: false

@@ -37,7 +37,9 @@ Templates:
       drpcli -T $PROFILE_TOKEN profiles update $CLUSTER_PROFILE "{\"Params\":{\"molten-core/etcd-discovery-url\":\"$ETCD_DISCOVERY\"} }" | jq .Params
     fi
 
-    drpcli machines update $RS_UUID "{\"Params\":{\"molten-core/zone\":\"$INDEX\",\"coreos/ignition-template\":\"molten-core-ign.json.tmpl\"} }" | jq .Params
+    DISK=$(drpcli machines params $RS_UUID | jq -r '.["gohai-inventory"].Storage.Disks[0].Name | split("/")[-1]')
+
+    drpcli machines update $RS_UUID "{\"Params\":{\"molten-core/zone\":\"$INDEX\",\"operating-system-disk\":\"$DISK\",\"coreos/ignition-template\":\"molten-core-ign.json.tmpl\"} }" | jq .Params
 
     echo "Finished successfully"
     exit 0

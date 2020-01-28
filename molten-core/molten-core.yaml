@@ -132,8 +132,9 @@ sections:
           fi
 
           DISK=$(drpcli machines params $RS_UUID | jq -r '.["gohai-inventory"].Storage.Disks[0].Name | split("/")[-1]')
+          NAME=zone-$INDEX.$CLUSTER_PROFILE.local
 
-          drpcli machines update $RS_UUID "{\"Params\":{\"molten-core/zone\":\"$INDEX\",\"operating-system-disk\":\"$DISK\",\"coreos/ignition-template\":\"molten-core-ign.json.tmpl\"} }" | jq .Params
+          drpcli machines update $RS_UUID "{\"Name\":\"$NAME\",\"Params\":{\"molten-core/zone\":\"$INDEX\",\"operating-system-disk\":\"$DISK\",\"coreos/ignition-template\":\"molten-core-ign.json.tmpl\"} }" | jq .Params
 
           echo "Finished successfully"
           exit 0

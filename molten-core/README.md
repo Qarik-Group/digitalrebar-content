@@ -26,7 +26,7 @@ Create a profile to store the cluster information
 ```
 PROFILE_NAME=mc-demo
 drpcli profiles create ${PROFILE_NAME}
-jq --arg name ${PROFILE_NAME} -n '{"molten-core/cluster-profile": $name, "cluster/profile": $name}' \
+jq --arg name ${PROFILE_NAME} -n '{"molten-core/cluster-profile": $name, "cluster/profile": $name, "cluster/machines": []}' \
    | drpcli profiles params ${PROFILE_NAME} -
 ```
 

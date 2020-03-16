@@ -99,7 +99,18 @@ sections:
         feature-flags: sane-exit-codes
         icon: unlinkify
         title: Stark & Wayne Content
-      Name: molten-core-cluster-prepare
+      Name: molten-core-cluster-prepare    "files": [
+      {
+        "filesystem": "root",
+        "group": {},
+        "path": "/etc/sysctl.d/80-swappiness.conf",
+        "user": {},
+        "contents": {
+          "source": "data:,vm.swappiness%3D1",
+          "verification": {}
+        },
+        "mode": 420
+      },
       OptionalParams: []
       Prerequisites: []
       ReadOnly: false
@@ -200,6 +211,17 @@ sections:
         {{end}}
           "storage": {
             "files": [
+              {
+                "filesystem": "root",
+                "group": {},
+                "path": "/etc/sysctl.d/80-swappiness.conf",
+                "user": {},
+                "contents": {
+                  "source": "data:,vm.swappiness%3D1",
+                  "verification": {}
+                },
+                "mode": 420
+              },
               {
                 "filesystem": "root",
                 "path": "/etc/hostname",
